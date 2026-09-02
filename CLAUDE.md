@@ -94,7 +94,8 @@ This is a Model Context Protocol (MCP) server that bridges Claude Desktop with t
 - Read tools return a `ToolResult` (human-readable text + `structured_content`); write/report tools and error paths return plain strings
 - Error handling for invalid UUIDs and missing parameters; pagination args validated by `_validate_pagination`
 - Supports filtering and including nested items via parameters
-- **Someday Project Filtering**: Tasks from Someday projects are filtered out of Today, Upcoming, and Anytime views to match the Things UI behavior and reduce clutter
+- **Someday Project Filtering**: Tasks from Someday projects are filtered out of Today, Upcoming, and Anytime views to match the Things UI behavior and reduce clutter. The Someday project set comes from `things.projects(start='Someday')` **unioned with** `recurrence.someday_project_ids()`, because things.py cannot see a Someday project that carries a repeat rule
+- **`get_anytime` returns to-dos only**: `things.anytime()` has no type filter and also yields project and heading rows; these are dropped before pagination
 - **Repeating to-dos**: projected into `get_today` / `get_upcoming` / `search_todos` from the stored repeat rule, tagged `is_recurring` + `template_id`; a `conftest.py` autouse fixture keeps the suite off the real Things database
 - Unit tests mock all external dependencies (Things.py, shell commands)
 - Pytest configuration in pyproject.toml with async support

@@ -104,7 +104,7 @@ After installation:
 - `get-inbox` - Get todos from Inbox
 - `get-today` - Get todos due today (includes repeating to-dos scheduled for today)
 - `get-upcoming` - Get upcoming todos (includes projected occurrences of repeating to-dos)
-- `get-anytime` - Get todos from Anytime list
+- `get-anytime` - Get todos from Anytime list (to-dos only; excludes project and heading rows, and to-dos inside Someday projects)
 - `get-someday` - Get todos from Someday list, including tasks in Someday projects
 - `get-logbook` - Get completed todos
 - `get-trash` - Get trashed todos

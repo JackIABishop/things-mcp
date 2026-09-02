@@ -312,8 +312,13 @@ async def get_anytime(limit: int = None, offset: int = 0) -> ToolResult:
     if err:
         return _error_result(err)
     todos = things.anytime(include_items=True)
+    # things.anytime() is tasks(start="Anytime") with no type filter, so it
+    # also returns project and heading rows. Headings ("Packing List") and
+    # projects are structure, not actionable to-dos, and Anytime is a list of
+    # things you could do next — so keep only to-dos.
+    todos = [t for t in (todos or []) if t.get('type') == 'to-do']
     # Filter out tasks from Someday projects, then paginate
-    todos = filter_someday_project_tasks(todos or [])
+    todos = filter_someday_project_tasks(todos)
     return _paginate_result(todos, format_todo, limit, offset, "No items found")
 
 @mcp.tool

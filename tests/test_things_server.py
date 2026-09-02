@@ -6,7 +6,7 @@ from tests._helpers import tool_text
 from things_mcp.server import (
     get_todos, get_today, get_inbox, search_todos, search_advanced,
     get_logbook, _parse_logbook_period, _today_fallback, get_tag_usage,
-    bulk_update_todos,
+    bulk_update_todos, get_anytime,
 )
 
 
@@ -455,3 +455,47 @@ async def test_get_logbook_supports_offset(mocker):
     mocker.patch('things.tasks', return_value=[_completed(f'u{i}', f'L{i}', today) for i in range(5)])
     result = tool_text(await get_logbook(period='7d', limit=2, offset=2))
     assert 'Showing 3-4 of 5 items' in result
+
+
+@pytest.mark.asyncio
+async def test_get_anytime_returns_only_todos(mocker):
+    """things.anytime() is tasks(start="Anytime") with no type filter, so it
+    also returns project and heading rows. Anytime is a list of things you
+    could do next, so only to-dos belong in it."""
+    mocker.patch('things.anytime', return_value=[
+        {'uuid': 'a', 'title': 'A real task', 'type': 'to-do'},
+        {'uuid': 'b', 'title': 'Packing List', 'type': 'heading'},
+        {'uuid': 'c', 'title': 'Job Search', 'type': 'project'},
+        {'uuid': 'd', 'title': 'Another task', 'type': 'to-do'},
+    ])
+    mocker.patch(
+        'things_mcp.server.filter_someday_project_tasks',
+        side_effect=lambda todos: todos,
+    )
+
+    result = await get_anytime()
+
+    items = result.structured_content['items']
+    assert [i['uuid'] for i in items] == ['a', 'd']
+    assert result.structured_content['total'] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_anytime_type_filter_runs_before_pagination(mocker):
+    """Non-to-do rows must not consume pagination slots or inflate the total."""
+    mocker.patch('things.anytime', return_value=[
+        {'uuid': 'h1', 'title': 'Heading', 'type': 'heading'},
+        {'uuid': 't1', 'title': 'Task one', 'type': 'to-do'},
+        {'uuid': 'p1', 'title': 'Project', 'type': 'project'},
+        {'uuid': 't2', 'title': 'Task two', 'type': 'to-do'},
+    ])
+    mocker.patch(
+        'things_mcp.server.filter_someday_project_tasks',
+        side_effect=lambda todos: todos,
+    )
+
+    result = tool_text(await get_anytime(limit=1))
+
+    assert 'Showing 1-1 of 2 items' in result
+    assert 'Task one' in result
+    assert 'Heading' not in result
