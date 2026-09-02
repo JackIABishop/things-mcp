@@ -164,3 +164,64 @@ class TestSomedayFiltering:
 
         assert len(result) == 1
         assert result[0]['uuid'] == 'task-3'
+
+
+class TestRepeatingSomedayProjects:
+    """Someday projects that carry a repeat rule are invisible to things.py.
+
+    ``things.projects(start='Someday')`` cannot return a project whose row has
+    a recurrence rule, because things.py filters those out of every query. The
+    Someday filter therefore missed repeating Someday projects entirely and let
+    their child to-dos leak into Anytime.
+    """
+
+    @patch('things_mcp.recurrence.someday_project_ids')
+    @patch('things_mcp.server.things.projects')
+    def test_children_of_repeating_someday_project_are_filtered(
+        self, mock_projects, mock_someday_ids
+    ):
+        # things.py can only see the non-repeating Someday project.
+        mock_projects.return_value = [{'uuid': 'plain-someday'}]
+        # The database knows about both, including the repeating one.
+        mock_someday_ids.return_value = {'plain-someday', 'repeating-someday'}
+
+        todos = [
+            {'uuid': 't1', 'title': 'Child of plain', 'project': 'plain-someday'},
+            {'uuid': 't2', 'title': 'Child of repeating', 'project': 'repeating-someday'},
+            {'uuid': 't3', 'title': 'Child of active', 'project': 'active-project'},
+        ]
+
+        result = filter_someday_project_tasks(todos)
+
+        assert [t['uuid'] for t in result] == ['t3']
+
+    @patch('things_mcp.recurrence.someday_project_ids')
+    @patch('things_mcp.server.things.projects')
+    def test_database_lookup_failure_falls_back_to_things_py(
+        self, mock_projects, mock_someday_ids
+    ):
+        """A failed lookup must not lose the filtering things.py can still do."""
+        mock_projects.return_value = [{'uuid': 'plain-someday'}]
+        mock_someday_ids.side_effect = RuntimeError("database unavailable")
+
+        todos = [
+            {'uuid': 't1', 'title': 'Child of plain', 'project': 'plain-someday'},
+            {'uuid': 't2', 'title': 'Child of active', 'project': 'active-project'},
+        ]
+
+        result = filter_someday_project_tasks(todos)
+
+        assert [t['uuid'] for t in result] == ['t2']
+
+    @patch('things_mcp.recurrence.someday_project_ids')
+    @patch('things_mcp.server.things.projects')
+    def test_filters_when_only_the_database_knows_of_someday_projects(
+        self, mock_projects, mock_someday_ids
+    ):
+        """things.py returning nothing must not short-circuit the filter."""
+        mock_projects.return_value = []
+        mock_someday_ids.return_value = {'repeating-someday'}
+
+        todos = [{'uuid': 't1', 'project': 'repeating-someday'}]
+
+        assert filter_someday_project_tasks(todos) == []

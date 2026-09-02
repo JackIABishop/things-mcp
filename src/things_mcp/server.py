@@ -45,7 +45,15 @@ def _get_someday_context():
     try:
         someday_project_ids = {p['uuid'] for p in (things.projects(start='Someday') or [])}
     except Exception:
-        return set(), {}
+        someday_project_ids = set()
+    # things.projects() cannot see a project whose row carries a repeat rule
+    # (things.py filters those out of every query), so repeating Someday
+    # projects were missed and their children leaked into Anytime. Union in
+    # the ids read straight from the database.
+    try:
+        someday_project_ids |= recurrence.someday_project_ids()
+    except Exception:
+        logger.debug("Could not augment Someday projects", exc_info=True)
     if not someday_project_ids:
         return set(), {}
     # Build heading -> project mapping for headings inside Someday projects

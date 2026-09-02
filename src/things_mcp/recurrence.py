@@ -440,6 +440,40 @@ def fetch_templates(db_path=None):
     return templates
 
 
+def someday_project_ids(db_path=None):
+    """UUIDs of every live Someday project, including repeating ones.
+
+    ``things.projects(start='Someday')`` cannot see a project whose row carries
+    a repeat rule, because things.py filters those out of every query. Someday
+    filtering built on it therefore misses repeating Someday projects and lets
+    their child to-dos leak into Anytime. Reading the column directly closes
+    that gap.
+
+    Returns an empty set on any failure, leaving the caller's existing
+    things.py-derived set untouched.
+    """
+    db_path = db_path or database_path()
+    try:
+        connection = _connect(db_path)
+    except sqlite3.Error:
+        logger.debug("Could not open Things database for Someday lookup", exc_info=True)
+        return set()
+    try:
+        with connection:
+            rows = connection.execute(
+                """
+                SELECT uuid FROM TMTask
+                WHERE type = 1 AND start = 2 AND status = 0 AND trashed = 0
+                """
+            ).fetchall()
+        return {row["uuid"] for row in rows}
+    except sqlite3.Error:
+        logger.debug("Could not read Someday projects", exc_info=True)
+        return set()
+    finally:
+        connection.close()
+
+
 def _synthesize(template, occurrence_date):
     """Build a todo-shaped dict for one projected occurrence.
 

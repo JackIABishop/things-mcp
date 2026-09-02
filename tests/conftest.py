@@ -117,8 +117,12 @@ def no_real_recurrence_templates():
     server-level test would pick up whatever repeats happen to exist on the
     machine running the suite.
 
-    Tests that exercise the projection supply their own templates explicitly
-    (see tests/test_recurring_visibility.py) or override this fixture.
+    The same applies to ``someday_project_ids``, which reads the Someday
+    projects things.py cannot see.
+
+    Tests that exercise either path supply their own data explicitly (see
+    tests/test_recurring_visibility.py) or override this fixture.
     """
-    with patch('things_mcp.recurrence.fetch_templates', return_value=[]):
+    with patch('things_mcp.recurrence.fetch_templates', return_value=[]), \
+         patch('things_mcp.recurrence.someday_project_ids', return_value=set()):
         yield
