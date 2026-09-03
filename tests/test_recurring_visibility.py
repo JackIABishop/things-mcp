@@ -394,7 +394,9 @@ class TestMerging:
             date(2026, 9, 1), date(2026, 9, 4), templates=templates
         )
         dates = [t["start_date"] for t in projected]
-        assert dates == ["2026-09-01", "2026-09-03", "2026-09-04"]
+        # Sept 2nd is skipped because Things has a real row for it, and Sept 1st
+        # because that open instance supersedes any earlier rule date.
+        assert dates == ["2026-09-03", "2026-09-04"]
         assert "2026-09-02" not in dates
 
     def test_trashed_instance_does_not_suppress_an_occurrence(self, things_db):
@@ -407,6 +409,52 @@ class TestMerging:
             date(2026, 9, 1), date(2026, 9, 2), templates=templates
         )
         assert [t["start_date"] for t in projected] == ["2026-09-01", "2026-09-02"]
+
+    def test_deferred_occurrence_is_not_re_added_to_its_original_date(self, things_db):
+        """The bug this guards: Things keeps one live instance per series, so
+        moving today's occurrence to tomorrow leaves no row on today. A
+        date-only check saw the gap and re-added it, undoing the deferral."""
+        things_db.add_template("tpl-1", "Weekly review",
+                               make_rule(recurrence.UNIT_DAY,
+                                         anchor=date(2026, 9, 1)))
+        # The user pushed the open instance from the 3rd to the 4th.
+        things_db.add_instance("inst-1", "tpl-1", date(2026, 9, 4), status=0)
+
+        templates = recurrence.fetch_templates(things_db.filepath)
+        projected = recurrence.recurring_occurrences(
+            date(2026, 9, 3), date(2026, 9, 3), templates=templates
+        )
+        assert projected == [], "deferred occurrence must not reappear"
+
+    def test_completed_instance_does_not_suppress_later_occurrences(self, things_db):
+        """A finished instance is not a held occurrence — the series carries on."""
+        things_db.add_template("tpl-1", "Daily task",
+                               make_rule(recurrence.UNIT_DAY,
+                                         anchor=date(2026, 9, 1)))
+        things_db.add_instance("inst-1", "tpl-1", date(2026, 9, 2), status=3)
+
+        templates = recurrence.fetch_templates(things_db.filepath)
+        projected = recurrence.recurring_occurrences(
+            date(2026, 9, 1), date(2026, 9, 4), templates=templates
+        )
+        # Only the 2nd is skipped (a real row exists); nothing else is held back.
+        assert [t["start_date"] for t in projected] == [
+            "2026-09-01", "2026-09-03", "2026-09-04",
+        ]
+
+    def test_occurrences_after_the_open_instance_still_project(self, things_db):
+        things_db.add_template("tpl-1", "Daily task",
+                               make_rule(recurrence.UNIT_DAY,
+                                         anchor=date(2026, 9, 1)))
+        things_db.add_instance("inst-1", "tpl-1", date(2026, 9, 2), status=0)
+
+        templates = recurrence.fetch_templates(things_db.filepath)
+        projected = recurrence.recurring_occurrences(
+            date(2026, 9, 1), date(2026, 9, 5), templates=templates
+        )
+        assert [t["start_date"] for t in projected] == [
+            "2026-09-03", "2026-09-04", "2026-09-05",
+        ]
 
     def test_projected_items_are_tagged(self, things_db):
         things_db.add_template("tpl-1", "Weekly review",

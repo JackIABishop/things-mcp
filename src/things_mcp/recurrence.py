@@ -405,17 +405,21 @@ def fetch_templates(db_path=None):
                     continue
                 instances = connection.execute(
                     """
-                    SELECT startDate FROM TMTask
+                    SELECT startDate, status FROM TMTask
                     WHERE rt1_repeatingTemplate = ? AND trashed = 0
                       AND startDate IS NOT NULL
                     """,
                     (row["uuid"],),
                 ).fetchall()
-                existing = {
-                    d
-                    for d in (_thingsdate_to_date(i["startDate"]) for i in instances)
-                    if d is not None
-                }
+                existing = set()
+                live_dates = set()
+                for instance in instances:
+                    instance_date = _thingsdate_to_date(instance["startDate"])
+                    if instance_date is None:
+                        continue
+                    existing.add(instance_date)
+                    if instance["status"] == 0:  # incomplete
+                        live_dates.add(instance_date)
                 templates.append(
                     {
                         "uuid": row["uuid"],
@@ -429,6 +433,10 @@ def fetch_templates(db_path=None):
                             row["rt1_nextInstanceStartDate"]
                         ),
                         "existing_dates": existing,
+                        # Earliest still-open instance. Things keeps exactly one
+                        # live instance per series, so anything the rule places
+                        # before it has already been dealt with or deferred.
+                        "earliest_live": min(live_dates) if live_dates else None,
                     }
                 )
     except sqlite3.Error:
@@ -613,9 +621,18 @@ def recurring_occurrences(
         else:
             dates = occurrences(rule, window_start, window_end, max_occurrences)
 
+        # Things materializes only one instance of a series at a time. If that
+        # instance is still open, it *is* the current occurrence no matter which
+        # date the user has moved it to — so a rule date before it must not be
+        # projected. Without this, deferring today's occurrence to tomorrow made
+        # the projection re-add it to today, undoing the deferral.
+        earliest_live = template.get("earliest_live")
+
         for occurrence_date in dates:
             if occurrence_date in existing:
                 continue  # Things already has a real row for this date.
+            if earliest_live is not None and occurrence_date < earliest_live:
+                continue  # Superseded by the open instance the user holds.
             results.append(_synthesize(template, occurrence_date))
 
     results.sort(key=lambda t: (t["start_date"], t["title"] or ""))
