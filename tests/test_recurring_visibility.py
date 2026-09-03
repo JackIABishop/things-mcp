@@ -652,3 +652,45 @@ class TestServerProjectsAndWindow:
 
         result = await get_projects(include_recurring=False)
         assert result.structured_content["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_days_bounds_the_window(self, mocker):
+        from things_mcp.server import get_upcoming
+
+        today = date.today()
+        inside = (today + timedelta(days=3)).isoformat()
+        outside = (today + timedelta(days=30)).isoformat()
+        mocker.patch("things.upcoming", return_value=[
+            {"uuid": "a", "title": "Soon", "start_date": inside},
+            {"uuid": "b", "title": "Later", "start_date": outside},
+        ])
+        mocker.patch("things_mcp.server.filter_someday_project_tasks",
+                     side_effect=lambda todos: todos)
+        mocker.patch("things_mcp.recurrence.fetch_templates", return_value=[])
+
+        result = await get_upcoming(days=7)
+
+        assert [i["uuid"] for i in result.structured_content["items"]] == ["a"]
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_without_days_is_unbounded(self, mocker):
+        from things_mcp.server import get_upcoming
+
+        today = date.today()
+        mocker.patch("things.upcoming", return_value=[
+            {"uuid": "a", "title": "Soon", "start_date": (today + timedelta(days=3)).isoformat()},
+            {"uuid": "b", "title": "Later", "start_date": (today + timedelta(days=30)).isoformat()},
+        ])
+        mocker.patch("things_mcp.server.filter_someday_project_tasks",
+                     side_effect=lambda todos: todos)
+        mocker.patch("things_mcp.recurrence.fetch_templates", return_value=[])
+
+        result = await get_upcoming()
+        assert result.structured_content["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_rejects_non_positive_days(self):
+        from things_mcp.server import get_upcoming
+
+        result = await get_upcoming(days=0)
+        assert "days must be a positive integer" in result.structured_content["error"]

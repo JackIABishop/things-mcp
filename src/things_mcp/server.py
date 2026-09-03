@@ -275,7 +275,8 @@ async def get_today(limit: int = None, offset: int = 0, include_recurring: bool 
     return _paginate_result(todos, format_todo, limit, offset, "No items found")
 
 @mcp.tool
-async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bool = True) -> ToolResult:
+async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bool = True,
+                       days: int = None) -> ToolResult:
     """Get upcoming todos
 
     Things only materializes one instance of a repeating to-do ahead of today,
@@ -287,17 +288,28 @@ async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bo
         limit: Maximum number of items to return (default: all)
         offset: Number of items to skip from the start (default: 0)
         include_recurring: Include projected repeating-to-do occurrences (default: True)
+        days: Only return items scheduled within this many days from today
+            (e.g. 7 for the coming week). Default: no limit.
     """
     err = _validate_pagination(limit, offset)
     if err:
         return _error_result(err)
+    if days is not None and days <= 0:
+        return _error_result("Error: days must be a positive integer")
     todos = things.upcoming(include_items=True)
     # Filter out tasks from Someday projects, then paginate
     todos = filter_someday_project_tasks(todos or [])
-    tomorrow = datetime.now().date() + timedelta(days=1)
-    todos = _merge_recurring(
-        todos, tomorrow, tomorrow + timedelta(days=RECURRING_HORIZON_DAYS), include_recurring
-    )
+
+    today = datetime.now().date()
+    tomorrow = today + timedelta(days=1)
+    horizon = days if days is not None else RECURRING_HORIZON_DAYS
+    window_end = today + timedelta(days=horizon)
+    if days is not None:
+        # Bound the real todos to the same window the projection uses, so both
+        # channels agree on what "the next N days" means.
+        cutoff = window_end.isoformat()
+        todos = [t for t in todos if not t.get('start_date') or t['start_date'] <= cutoff]
+    todos = _merge_recurring(todos, tomorrow, window_end, include_recurring)
     return _paginate_result(todos, format_todo, limit, offset, "No items found")
 
 @mcp.tool
