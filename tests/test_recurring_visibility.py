@@ -68,7 +68,10 @@ CREATE TABLE TMTask (
     rt1_repeatingTemplate TEXT,
     rt1_recurrenceRule BLOB,
     rt1_nextInstanceStartDate INTEGER,
-    rt1_instanceCreationPaused INTEGER
+    rt1_instanceCreationPaused INTEGER,
+    creationDate REAL,
+    userModificationDate REAL,
+    start INTEGER DEFAULT 1
 );
 """
 
@@ -114,6 +117,15 @@ def things_db(tmp_path):
                 " rt1_repeatingTemplate, startDate) VALUES (?,?,?,?,?,?)",
                 (uuid, "instance", status, trashed, template_uuid,
                  to_thingsdate(start)),
+            )
+            connection.commit()
+
+        @staticmethod
+        def add_repeating_project(uuid, title, rule, status=0, trashed=0, start=1):
+            connection.execute(
+                "INSERT INTO TMTask (uuid, title, type, status, trashed, start,"
+                " rt1_recurrenceRule) VALUES (?,?,1,?,?,?,?)",
+                (uuid, title, status, trashed, start, rule),
             )
             connection.commit()
 
@@ -555,3 +567,88 @@ class TestServerIntegration:
 
         result = await get_today()
         assert [i["uuid"] for i in result.structured_content["items"]] == ["real-1"]
+
+
+# --------------------------------------------------------------------------
+# Repeating projects
+# --------------------------------------------------------------------------
+
+class TestRepeatingProjects:
+    """things.projects() cannot return a project that carries a repeat rule."""
+
+    def test_only_live_repeating_projects_are_returned(self, things_db):
+        things_db.add_template("p-rec", "Christmas",
+                               make_rule(recurrence.UNIT_YEAR), project=None)
+        things_db.add_repeating_project("p-week", "Weekly Reset",
+                                        make_rule(recurrence.UNIT_WEEK, interval=2),
+                                        start=2)
+        things_db.add_repeating_project("p-done", "Done",
+                                        make_rule(recurrence.UNIT_YEAR), status=3)
+        things_db.add_repeating_project("p-cancel", "Canceled",
+                                        make_rule(recurrence.UNIT_YEAR), status=2)
+        things_db.add_repeating_project("p-trash", "Trashed",
+                                        make_rule(recurrence.UNIT_YEAR), trashed=1)
+        things_db.add_project("p-plain", "Plain project")
+
+        got = recurrence.repeating_projects(things_db.filepath)
+
+        # The to-do template and the non-repeating / dead projects are excluded.
+        assert sorted(p["uuid"] for p in got) == ["p-week"]
+
+    def test_project_shape_matches_things_py(self, things_db):
+        things_db.add_repeating_project("p-week", "Weekly Reset",
+                                        make_rule(recurrence.UNIT_WEEK, interval=2),
+                                        start=2)
+        project = recurrence.repeating_projects(things_db.filepath)[0]
+        assert project["type"] == "project"
+        assert project["status"] == "incomplete"
+        assert project["start"] == "Someday"
+        assert project["is_recurring"] is True
+        assert project["recurrence_unit"] == "week"
+        assert project["recurrence_interval"] == 2
+
+    def test_missing_database_is_survivable(self, tmp_path):
+        assert recurrence.repeating_projects(str(tmp_path / "nope.sqlite")) == []
+
+
+class TestServerProjectsAndWindow:
+    """Tool-level wiring for repeating projects and the upcoming window."""
+
+    @pytest.mark.asyncio
+    async def test_get_projects_includes_repeating_projects(self, mocker):
+        from things_mcp.server import get_projects
+
+        mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
+        mocker.patch("things_mcp.recurrence.repeating_projects",
+                     return_value=[{"uuid": "p2", "title": "Beta", "is_recurring": True}])
+        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+
+        result = await get_projects()
+
+        assert {p["uuid"] for p in result.structured_content["items"]} == {"p1", "p2"}
+        assert result.structured_content["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_projects_does_not_duplicate(self, mocker):
+        """A project things.py can already see must not be added twice."""
+        from things_mcp.server import get_projects
+
+        mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
+        mocker.patch("things_mcp.recurrence.repeating_projects",
+                     return_value=[{"uuid": "p1", "title": "Alpha"}])
+        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+
+        result = await get_projects()
+        assert result.structured_content["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_projects_can_opt_out(self, mocker):
+        from things_mcp.server import get_projects
+
+        mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
+        mocker.patch("things_mcp.recurrence.repeating_projects",
+                     return_value=[{"uuid": "p2", "title": "Beta"}])
+        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+
+        result = await get_projects(include_recurring=False)
+        assert result.structured_content["total"] == 1

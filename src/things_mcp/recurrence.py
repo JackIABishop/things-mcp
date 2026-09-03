@@ -440,6 +440,82 @@ def fetch_templates(db_path=None):
     return templates
 
 
+START_NAMES = {0: "Inbox", 1: "Anytime", 2: "Someday"}
+
+
+def _unixtime_to_timestamp(value):
+    """Format a Unix timestamp the way things.py renders created/modified."""
+    if value is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(value)).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
+def repeating_projects(db_path=None):
+    """Live projects that carry a repeat rule, shaped like things.py projects.
+
+    ``things.projects()`` cannot return these at all — things.py filters every
+    row with a recurrence rule out of its queries — so a repeating project is
+    invisible to every tool that lists projects. Reading them directly restores
+    them.
+
+    Returns an empty list on any failure, so callers keep whatever things.py
+    already gave them.
+    """
+    db_path = db_path or database_path()
+    try:
+        connection = _connect(db_path)
+    except sqlite3.Error:
+        logger.debug("Could not open Things database for projects", exc_info=True)
+        return []
+
+    projects = []
+    try:
+        with connection:
+            rows = connection.execute(
+                """
+                SELECT uuid, title, notes, area, start, startDate, deadline,
+                       creationDate, userModificationDate, rt1_recurrenceRule
+                FROM TMTask
+                WHERE type = 1 AND status = 0 AND trashed = 0
+                  AND rt1_recurrenceRule IS NOT NULL
+                """
+            ).fetchall()
+        for row in rows:
+            rule = parse_recurrence_rule(row["rt1_recurrenceRule"]) or {}
+            projects.append(
+                {
+                    "uuid": row["uuid"],
+                    "type": "project",
+                    "title": row["title"],
+                    "status": "incomplete",
+                    "notes": row["notes"],
+                    "area": row["area"],
+                    "start": START_NAMES.get(row["start"], "Anytime"),
+                    "start_date": _thingsdate_to_date(row["startDate"]).isoformat()
+                    if _thingsdate_to_date(row["startDate"])
+                    else None,
+                    "deadline": _thingsdate_to_date(row["deadline"]).isoformat()
+                    if _thingsdate_to_date(row["deadline"])
+                    else None,
+                    "created": _unixtime_to_timestamp(row["creationDate"]),
+                    "modified": _unixtime_to_timestamp(row["userModificationDate"]),
+                    "is_recurring": True,
+                    "recurrence_unit": UNIT_NAMES.get(rule.get("unit")),
+                    "recurrence_interval": rule.get("interval"),
+                }
+            )
+    except sqlite3.Error:
+        logger.debug("Could not read repeating projects", exc_info=True)
+        return []
+    finally:
+        connection.close()
+
+    return projects
+
+
 def someday_project_ids(db_path=None):
     """UUIDs of every live Someday project, including repeating ones.
 

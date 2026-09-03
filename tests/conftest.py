@@ -117,12 +117,14 @@ def no_real_recurrence_templates():
     server-level test would pick up whatever repeats happen to exist on the
     machine running the suite.
 
-    The same applies to ``someday_project_ids``, which reads the Someday
-    projects things.py cannot see.
+    The same applies to ``someday_project_ids`` and ``repeating_projects``,
+    which read the Someday projects and repeating projects things.py cannot
+    see. Every direct-database reader in recurrence.py belongs in this guard.
 
     Tests that exercise either path supply their own data explicitly (see
     tests/test_recurring_visibility.py) or override this fixture.
     """
     with patch('things_mcp.recurrence.fetch_templates', return_value=[]), \
-         patch('things_mcp.recurrence.someday_project_ids', return_value=set()):
+         patch('things_mcp.recurrence.someday_project_ids', return_value=set()), \
+         patch('things_mcp.recurrence.repeating_projects', return_value=[]):
         yield

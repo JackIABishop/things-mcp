@@ -445,18 +445,33 @@ async def get_todos(project_uuid: str = None, include_items: bool = True,
     return _paginate_result(todos, format_todo, limit, offset, "No todos found")
 
 @mcp.tool
-async def get_projects(include_items: bool = False, limit: int = None, offset: int = 0) -> ToolResult:
+async def get_projects(include_items: bool = False, limit: int = None, offset: int = 0,
+                       include_recurring: bool = True) -> ToolResult:
     """Get all projects from Things
+
+    Includes repeating projects, which things.py cannot return at all (it
+    filters every row carrying a repeat rule out of its queries), and which
+    were therefore missing from this list entirely.
 
     Args:
         include_items: Include tasks within projects
         limit: Maximum number of items to return (default: all)
         offset: Number of items to skip from the start (default: 0)
+        include_recurring: Include projects that carry a repeat rule (default: True)
     """
     err = _validate_pagination(limit, offset)
     if err:
         return _error_result(err)
-    projects = things.projects()
+    projects = things.projects() or []
+    if include_recurring:
+        try:
+            seen = {p.get('uuid') for p in projects}
+            extra = [p for p in recurrence.repeating_projects() if p['uuid'] not in seen]
+            if extra:
+                projects = list(projects) + extra
+                projects.sort(key=lambda p: (p.get('title') or '').lower())
+        except Exception:
+            logger.debug("Could not merge repeating projects", exc_info=True)
     return _paginate_result(
         projects, lambda p: format_project(p, include_items),
         limit, offset, "No projects found"
