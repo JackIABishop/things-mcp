@@ -4,6 +4,30 @@ This [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction
 
 This server leverages the [Things.py](https://github.com/thingsapi/things.py) library and the [Things URL Scheme](https://culturedcode.com/things/help/url-scheme/). 
 
+---
+
+## About this fork
+
+This is a personal fork of [hald/things-mcp](https://github.com/hald/things-mcp). It exists because `things.py` hard-codes `rt1_recurrenceRule IS NULL` into **every** task query, which makes repeating to-dos and repeating projects invisible to its entire API — with no parameter to opt back in. Several list views were quietly wrong as a result.
+
+Changes here, newest first:
+
+| Change | Effect |
+|---|---|
+| Deferred occurrences are no longer re-projected | Things keeps one live instance per series, so deferring a task *moves* that row. A date-only duplicate check saw the gap and re-added the task to its original day, undoing the deferral. |
+| `get_upcoming` defaults to a 7-day window | Was every future item. `days=1` for tomorrow, `days=14` for a fortnight, `days=None` for the old behaviour. |
+| `get_upcoming` drops heading rows | Headings ("Packing List") are structure, not tasks. Project rows are kept — a dated project is a real commitment, and Things' own Upcoming shows them. |
+| `get_projects` includes repeating projects | These were missing entirely — 24% of live projects on the author's database. |
+| `get_anytime` returns only to-dos | It was also returning project and heading rows. |
+| Repeating Someday projects no longer leak into Anytime | Someday filtering used `things.projects(start='Someday')`, which cannot see a project carrying a repeat rule, so all their children leaked. |
+| Repeating to-dos appear in Today / Upcoming / search | [#67](https://github.com/hald/things-mcp/issues/67). Occurrences are projected from the stored repeat rule and tagged `is_recurring` + `template_id`. See `src/things_mcp/recurrence.py`, whose docstring documents the undocumented rule format. |
+
+**Upstream status:** the repeating-to-do fix is offered upstream as [PR #71](https://github.com/hald/things-mcp/pull/71). The rest is not, and one change is deliberately fork-only: making `get_upcoming` default to 7 days alters the default response, which is the maintainer's call rather than a contributor's.
+
+**On the recurrence decoding:** the repeat-rule format is undocumented and was reverse-engineered. It is validated against two invariants that are immune to user edits — the rule's own phase anchor, and Things' precomputed next-instance date, which the projection reproduces exactly for every fixed-schedule template tested. Rules that repeat *after completion* have no derivable schedule, so only the single next date Things itself computed is surfaced; nothing is invented.
+
+---
+
 <a href="https://glama.ai/mcp/servers/t9cgixg2ah"><img width="380" height="200" src="https://glama.ai/mcp/servers/t9cgixg2ah/badge" alt="Things Server MCP server" /></a>
 
 ## Support the Project
