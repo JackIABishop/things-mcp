@@ -276,7 +276,7 @@ async def get_today(limit: int = None, offset: int = 0, include_recurring: bool 
 
 @mcp.tool
 async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bool = True,
-                       days: int = None) -> ToolResult:
+                       days: int = 7) -> ToolResult:
     """Get upcoming todos
 
     Things only materializes one instance of a repeating to-do ahead of today,
@@ -288,8 +288,9 @@ async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bo
         limit: Maximum number of items to return (default: all)
         offset: Number of items to skip from the start (default: 0)
         include_recurring: Include projected repeating-to-do occurrences (default: True)
-        days: Only return items scheduled within this many days from today
-            (e.g. 7 for the coming week). Default: no limit.
+        days: Only return items scheduled within this many days from today.
+            Defaults to 7 (the coming week) — pass 1 for just tomorrow, 14 for
+            a fortnight, or None for every future item.
     """
     err = _validate_pagination(limit, offset)
     if err:
@@ -297,8 +298,13 @@ async def get_upcoming(limit: int = None, offset: int = 0, include_recurring: bo
     if days is not None and days <= 0:
         return _error_result("Error: days must be a positive integer")
     todos = things.upcoming(include_items=True)
+    # things.upcoming() has no type filter. Headings ("Packing List") are
+    # structure inside a project and can't be acted on, so drop them; projects
+    # are kept, since a dated project is a real upcoming commitment and Things'
+    # own Upcoming view shows them.
+    todos = [t for t in (todos or []) if t.get('type') != 'heading']
     # Filter out tasks from Someday projects, then paginate
-    todos = filter_someday_project_tasks(todos or [])
+    todos = filter_someday_project_tasks(todos)
 
     today = datetime.now().date()
     tomorrow = today + timedelta(days=1)

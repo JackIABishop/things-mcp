@@ -95,6 +95,8 @@ This is a Model Context Protocol (MCP) server that bridges Claude Desktop with t
 - Error handling for invalid UUIDs and missing parameters; pagination args validated by `_validate_pagination`
 - Supports filtering and including nested items via parameters
 - **Someday Project Filtering**: Tasks from Someday projects are filtered out of Today, Upcoming, and Anytime views to match the Things UI behavior and reduce clutter. The Someday project set comes from `things.projects(start='Someday')` **unioned with** `recurrence.someday_project_ids()`, because things.py cannot see a Someday project that carries a repeat rule
+- **`get_upcoming` window**: `days` defaults to 7; it bounds both the real to-dos and the recurrence projection. Heading rows are dropped, project rows kept (deliberately different from `get_anytime`)
+- **`get_projects` includes repeating projects** via `recurrence.repeating_projects()`, which things.py cannot return
 - **`get_anytime` returns to-dos only**: `things.anytime()` has no type filter and also yields project and heading rows; these are dropped before pagination
 - **Repeating to-dos**: projected into `get_today` / `get_upcoming` / `search_todos` from the stored repeat rule, tagged `is_recurring` + `template_id`; a `conftest.py` autouse fixture keeps the suite off the real Things database
 - Unit tests mock all external dependencies (Things.py, shell commands)

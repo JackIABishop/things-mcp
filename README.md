@@ -103,7 +103,7 @@ After installation:
 ### List Views
 - `get-inbox` - Get todos from Inbox
 - `get-today` - Get todos due today (includes repeating to-dos scheduled for today)
-- `get-upcoming` - Get upcoming todos (includes projected occurrences of repeating to-dos)
+- `get-upcoming` - Get upcoming todos for the next 7 days by default (includes projected occurrences of repeating to-dos; excludes heading rows)
 - `get-anytime` - Get todos from Anytime list (to-dos only; excludes project and heading rows, and to-dos inside Someday projects)
 - `get-someday` - Get todos from Someday list, including tasks in Someday projects
 - `get-logbook` - Get completed todos
@@ -111,7 +111,7 @@ After installation:
 
 ### Basic Operations
 - `get-todos` - Get todos, optionally filtered by project
-- `get-projects` - Get all projects
+- `get-projects` - Get all projects, including repeating projects that things.py cannot see
 - `get-areas` - Get all areas
 
 ### Tag Operations
@@ -147,6 +147,11 @@ The list/search read tools (`get-inbox`, `get-today`, `get-upcoming`, `get-anyti
 When neither is set, output is unchanged. When set, a `Showing X-Y of Z items` header is prepended so you know how much more there is. An `offset` past the end is reported distinctly from an empty result.
 
 These same read tools also return **structured content** alongside the human-readable text: MCP clients receive the raw item dicts plus `count`/`total`/`offset`/`limit` under `structured_content`, so data can be consumed programmatically without parsing the formatted text.
+
+### get-upcoming
+- `days` (optional, default `7`) - only return items scheduled within this many days from today. `1` for tomorrow, `14` for a fortnight, `None` for every future item.
+
+Heading rows are excluded; project rows are kept, since a dated project is a real upcoming commitment.
 
 ### Repeating to-dos (get-today, get-upcoming, search-todos)
 Things 3 stores a repeating to-do as a single template with a repeat rule attached, and materializes at most **one** real instance ahead of today. The underlying `things.py` library also filters template rows out of every query. The result was that repeating to-dos were largely invisible: they never appeared in `get-upcoming`, and `search-todos` could not find them at all.

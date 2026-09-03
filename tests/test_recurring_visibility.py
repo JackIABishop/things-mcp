@@ -520,7 +520,8 @@ class TestServerIntegration:
                      return_value=[self._template()])
         mocker.patch("things_mcp.server.RECURRING_OCCURRENCES", 8)
 
-        result = await get_upcoming()
+        # days=None so the occurrence cap, not the window, is what bounds this.
+        result = await get_upcoming(days=None)
         items = result.structured_content["items"]
         # A daily repeat yields one occurrence per day, starting tomorrow.
         assert len(items) == 8
@@ -661,8 +662,8 @@ class TestServerProjectsAndWindow:
         inside = (today + timedelta(days=3)).isoformat()
         outside = (today + timedelta(days=30)).isoformat()
         mocker.patch("things.upcoming", return_value=[
-            {"uuid": "a", "title": "Soon", "start_date": inside},
-            {"uuid": "b", "title": "Later", "start_date": outside},
+            {"uuid": "a", "type": "to-do", "title": "Soon", "start_date": inside},
+            {"uuid": "b", "type": "to-do", "title": "Later", "start_date": outside},
         ])
         mocker.patch("things_mcp.server.filter_someday_project_tasks",
                      side_effect=lambda todos: todos)
@@ -672,21 +673,61 @@ class TestServerProjectsAndWindow:
 
         assert [i["uuid"] for i in result.structured_content["items"]] == ["a"]
 
-    @pytest.mark.asyncio
-    async def test_get_upcoming_without_days_is_unbounded(self, mocker):
-        from things_mcp.server import get_upcoming
-
+    @staticmethod
+    def _two_dated_todos(mocker):
         today = date.today()
         mocker.patch("things.upcoming", return_value=[
-            {"uuid": "a", "title": "Soon", "start_date": (today + timedelta(days=3)).isoformat()},
-            {"uuid": "b", "title": "Later", "start_date": (today + timedelta(days=30)).isoformat()},
+            {"uuid": "a", "type": "to-do", "title": "Soon", "start_date": (today + timedelta(days=3)).isoformat()},
+            {"uuid": "b", "type": "to-do", "title": "Later", "start_date": (today + timedelta(days=30)).isoformat()},
+        ])
+        mocker.patch("things_mcp.server.filter_someday_project_tasks",
+                     side_effect=lambda todos: todos)
+        mocker.patch("things_mcp.recurrence.fetch_templates", return_value=[])
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_defaults_to_one_week(self, mocker):
+        """The common question is "what's coming this week", so that's default."""
+        from things_mcp.server import get_upcoming
+
+        self._two_dated_todos(mocker)
+        result = await get_upcoming()
+        assert [i["uuid"] for i in result.structured_content["items"]] == ["a"]
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_days_none_is_unbounded(self, mocker):
+        from things_mcp.server import get_upcoming
+
+        self._two_dated_todos(mocker)
+        result = await get_upcoming(days=None)
+        assert result.structured_content["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_days_can_widen_the_window(self, mocker):
+        from things_mcp.server import get_upcoming
+
+        self._two_dated_todos(mocker)
+        result = await get_upcoming(days=45)
+        assert result.structured_content["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_get_upcoming_drops_headings_but_keeps_projects(self, mocker):
+        """Headings are structure; a dated project is a real commitment."""
+        from things_mcp.server import get_upcoming
+
+        soon = (date.today() + timedelta(days=2)).isoformat()
+        mocker.patch("things.upcoming", return_value=[
+            {"uuid": "t", "type": "to-do", "title": "A task", "start_date": soon},
+            {"uuid": "h", "type": "heading", "title": "Packing List", "start_date": soon},
+            {"uuid": "p", "type": "project", "title": "A project", "start_date": soon},
         ])
         mocker.patch("things_mcp.server.filter_someday_project_tasks",
                      side_effect=lambda todos: todos)
         mocker.patch("things_mcp.recurrence.fetch_templates", return_value=[])
 
         result = await get_upcoming()
-        assert result.structured_content["total"] == 2
+
+        items = {i["uuid"] for i in result.structured_content["items"]}
+        assert items == {"t", "p"}, "heading should be dropped, project kept"
 
     @pytest.mark.asyncio
     async def test_get_upcoming_rejects_non_positive_days(self):
