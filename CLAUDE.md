@@ -75,7 +75,7 @@ This is a Model Context Protocol (MCP) server that bridges Claude Desktop with t
    - Deliberately does NOT reimplement Things' recurrence engine: `tp=1` ("after completion") rules have no derivable schedule, so only Things' own precomputed next date is surfaced
    - All failures are swallowed and the caller's original list returned, so projection can only ever add results
 
-5. **tests/** - Unit test suite (209 tests)
+5. **tests/** - Unit test suite (247 tests)
    - **conftest.py** - Pytest fixtures and mock data
    - **_helpers.py** - `tool_text()` reads the text channel from a `ToolResult` (or a plain-string result) so text assertions work across both return shapes
    - **test_url_scheme.py** - Tests for URL construction
