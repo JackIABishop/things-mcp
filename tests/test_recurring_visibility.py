@@ -670,7 +670,7 @@ class TestServerProjectsAndWindow:
         mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
         mocker.patch("things_mcp.recurrence.repeating_projects",
                      return_value=[{"uuid": "p2", "title": "Beta", "is_recurring": True}])
-        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+        mocker.patch("things_mcp.server.format_project", side_effect=lambda p, i: p["title"])
 
         result = await get_projects()
 
@@ -685,7 +685,7 @@ class TestServerProjectsAndWindow:
         mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
         mocker.patch("things_mcp.recurrence.repeating_projects",
                      return_value=[{"uuid": "p1", "title": "Alpha"}])
-        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+        mocker.patch("things_mcp.server.format_project", side_effect=lambda p, i: p["title"])
 
         result = await get_projects()
         assert result.structured_content["total"] == 1
@@ -697,7 +697,7 @@ class TestServerProjectsAndWindow:
         mocker.patch("things.projects", return_value=[{"uuid": "p1", "title": "Alpha"}])
         mocker.patch("things_mcp.recurrence.repeating_projects",
                      return_value=[{"uuid": "p2", "title": "Beta"}])
-        mocker.patch("things_mcp.formatters.format_project", side_effect=lambda p, i: p["title"])
+        mocker.patch("things_mcp.server.format_project", side_effect=lambda p, i: p["title"])
 
         result = await get_projects(include_recurring=False)
         assert result.structured_content["total"] == 1
